@@ -1684,7 +1684,7 @@ each column in the specfile. Some of them will be temperature.
       real(kind=8),allocatable, dimension(:,:),save :: mmasum
       real(kind=8) :: rn
       integer(kind=4) :: i
-      integer(kind=8),save :: nt, nwas
+      integer(kind=4),save :: nt, nwas
       character(len=80) :: s
       if(mode.eq.2 .and. nt.ne.0)then ! write to log file
         rn=real(nt,8) 
@@ -1898,7 +1898,7 @@ monitor set to zero to eliminate them.
       logical :: filterlogical=.false.
       real(kind=8), dimension(10,3) :: lt
       real(kind=8) :: tth, tthnew
-      integer(kind=8) :: nc=0, np=1
+      integer(kind=4) :: nc=0, np=1
       contains
       subroutine filterinit()
       lt(:,1)=0.0
@@ -3795,7 +3795,7 @@ Opposite of exscan - if you want to only include a certain list of scans.
 ! Place these in an array which only nextscan knows about
       character(len=*),intent(in) :: string
       integer(kind=4),allocatable :: temp(:)
-      integer(kind=4) :: i, j
+      integer(kind=4) :: i, j, nincld
       nincld=ncommas(string)+1
       allocate(temp(nincld))
       read(string(4:len(string)),*)temp
@@ -4306,7 +4306,7 @@ with everything else wrapped up inside previously defined code.
       write(*,*)            ! after non advancing io list of scans binned
       call calibsum
       if(bcm)call bcmfile(0)
-      !if(diag) call outputdiagnosticw32(wd) for windows and prestoplot
+      !if(diag) call outputdiagnosticw32(wd) ! for windows and prestoplot
       if(diag)call outputdiagnostic(wd)!If problems in combining chans
       hist=hist*scalinp ! apply scale factor after diagnostic plot
       select case(isc)                             ! rescale if necessary
@@ -4508,10 +4508,10 @@ The fortran for the checking program is straightforward. Here it is:
       character(len=256)::line
       integer :: ier, iarg, ioutunit, jjj
       integer, external :: iargc
-      integer(kind=8) :: i, ndata, iscan, n, j, k, n3s, n6s
+      integer(kind=4) :: i, ndata, iscan, n, j, k, n3s, n6s
       real(kind=8) :: x,y,esd, diff, c2, wd, tthlow, tthhigh, step
       real(kind=8),allocatable,dimension(:,:) :: data
-      integer(kind=8),external :: jbin
+      integer(kind=4),external :: jbin
 ! Read epf file in
       i=0; ier=0
       call getarg(1,line) ! name of epf file
@@ -4609,7 +4609,7 @@ The fortran for the checking program is straightforward. Here it is:
       close(ioutunit)
       end program id31check
 
-      integer(kind=8) function jbin(tth,tthlow,tthhigh,step)
+      integer(kind=4) function jbin(tth,tthlow,tthhigh,step)
       implicit none
       real(kind=8),intent(in)::tth, tthlow, tthhigh, step
       real(kind=8)::x
@@ -4639,10 +4639,10 @@ program for checking that channels are equivalent.
       character(len=256)::line
       integer :: ier, iarg, ioutunit, jjj
       integer, external :: iargc
-      integer(kind=8) :: i, ndata, iscan, n, j, k, n3s, n6s
+      integer(kind=4) :: i, ndata, iscan, n, j, k, n3s, n6s
       real(kind=8) :: x,y,esd, diff, c2, wd, tthlow, tthhigh, step
       real(kind=8),allocatable,dimension(:,:) :: data
-      integer(kind=8),external :: jbin
+      integer(kind=4),external :: jbin
 ! Read epf file in
       i=0; ier=0
       call getarg(1,line) ! name of first file
@@ -4745,7 +4745,7 @@ program for checking that channels are equivalent.
       close(ioutunit)
       end program id31check
 
-      integer(kind=8) function jbin(tth,tthlow,tthhigh,step)
+      integer(kind=4) function jbin(tth,tthlow,tthhigh,step)
       implicit none
       real(kind=8),intent(in)::tth, tthlow, tthhigh, step
       real(kind=8)::x
