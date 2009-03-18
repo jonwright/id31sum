@@ -189,6 +189,7 @@ routines is needed, so we'll make a list of what we want here.
       integer(kind=4),parameter :: NWORDS=60, NLINES=50
       integer(kind=4),dimension(NLINES) :: headerwords
       real(kind=8),dimension(NWORDS,NLINES) :: wordvalues
+      real(kind=8),dimension(NWORDS) :: Q
       character(len=6) :: lnfmt
       character(len=LINELENGTH) :: filnam, line
       character(len=LINELENGTH) :: specsfilename, specsdate
@@ -343,7 +344,7 @@ recorded somewhere, so we just pull everything possible out here.
 
 For interpreting the header we need some information about the meaning of the 
 various \# labels in the header. This has been alluded to earlier, but here is
-a definitive list (FIXME find out what \#G and \#Q are)
+a definitive list.
 \begin{itemize}
 \item \#F filename
 \item \#E A number - not sure what it is!
@@ -351,8 +352,8 @@ a definitive list (FIXME find out what \#G and \#Q are)
 \item \#C The creator of the file
 \item \#On Index of the labels which will correspond to following \#P cards
 \item \#Sn Scan number and information
-\item \#G No idea - all zeros?
-\item \#Q No idea - blank
+\item \#G Diffractometer geometry for spec fourc mode (see link below)
+\item \#Q Four circle variables. h,k,l = q[0,1,2], wavelength=q[3]
 \item \#Pn values corresponding to motor names in \#O
 \item \#N number of columns in output data 
 \item \#L names of columns in output data (should be \#N columns)
@@ -360,6 +361,8 @@ a definitive list (FIXME find out what \#G and \#Q are)
 \item blank line - end of a scan?
 \item scan ended by control-c ? Did I imagine this ?
 \end{itemize}
+
+For the rest of #Q see: http://www.certif.com/spec\_manual/fourc\_4\_9.html
 
 The \code{readheader} routine interprets these lines. 
 
@@ -379,6 +382,9 @@ The \code{readheader} routine interprets these lines.
         case('P')
          read(line(3:3),'(i1)')i
          call rdnums(4,NWORDS,wordvalues(:,i+1))
+        case('Q')
+! Copy the Q from the header into our specfile module
+         read(line(3:LINELENGTH),*,end=1, err=1) Q
         case('N')
          read(line(3:len_trim(line)),*,end=1)ncolumns
         case('L') ! signals end of header, bug out here !
@@ -414,7 +420,8 @@ names which contain a space.
       integer(kind=4),intent(in) :: lenout,n
       character(len=*),intent(in) :: instring
       character(len=lenout),dimension(n),intent(out) :: outstrings
-      integer(kind=4) :: i,j,k,l
+      integer(kind=4),intent(out) :: i
+      integer(kind=4) :: j,k,l
       j=1; k=1
       do i=1,len_trim(instring) ! hope len > len_trim or array overstep
       if(instring(i:i+1).ne.'  ')then
@@ -1044,6 +1051,10 @@ suffice for most applications, but will be modifiable user options.
 @d SCAN 
 @{      real(kind=8), allocatable ::  ascan(:,:)
       real(kind=8) :: step, tthlow, tthhigh, aminstep
+! if requested by the user
+      real(kind=8) :: user_step = 0.003d0 
+      real(kind=8) :: user_tthlow = -30.0d0
+      real(kind=8) :: user_tthhigh = 160.0d0
       integer(kind=4) :: npts
       data tthlow, tthhigh, step, aminstep /-30.0d0, 160.0d0, 0.003d0,  &
      & 0.0002d0 /                                                            @}
@@ -1152,17 +1163,29 @@ $5 \times 10^{-5}$, so any binsize smaller than that would be a bit silly.
 @d checkrebinpars
 @{      subroutine checkrebinpars
       real(kind=8) :: x
-      if(step.lt.aminstep)then
+      if ((units.ne.'T').and. (.not. wavelength_set) ) return
+      if(step.lt.aminstep .and. (units.eq.'T'))then
        write(*,'(a,G12.4)')'Step is a bit small, resetting to ',aminstep
        step=aminstep
+       user_step = step
       endif
       x=tthlow/step 
       tthlow=real(int(x),8)*step
       x=(tthhigh-tthlow)/step
       npts=int(x) 
       tthhigh=tthhb(npts)
+      if (units .eq. 'T') then
       write(*,'(3(G12.5,a),G12.5)')tthlow,' < tth < ',tthhigh,            &
      &' step=',step,' npts=',npts
+      endif
+      if (units.eq.'Q') then
+      write(*,'(3(G12.5,a),G12.5)')tthlow,' < 2pi/d < ',tthhigh,          &
+     &' step=',step,' npts=',npts
+      endif
+      if (units.eq.'R') then
+      write(*,'(3(G12.5,a),G12.5)')tthlow,' < Q^2 < ',tthhigh,            &
+     &' step=',step,' npts=',npts
+      endif
       return
       end subroutine checkrebinpars                                          @}
 
@@ -1178,6 +1201,9 @@ stepsize and allocate an array to hold the data.
       integer(kind=4) :: ierr, i
       real(kind=8) :: junk
 !      real :: time1, time2
+! constants to machine precision
+      four_pi = 8.0d0*asin(1.0d0)
+      pi_over_360 = asin(1.0d0)/180.0d0
 ! default values
 @<offsetdefaults@>
       open(unit=16,file='temp.res',form='FORMATTED',                    &
@@ -1200,7 +1226,12 @@ stepsize and allocate an array to hold the data.
 12    write(*,'(a)')'Reached end of temp.res file early?'
 11    close(16)
 ! two theta low, two theta high, step and that npts is correct
-      call checkrebinpars
+      if ((units.eq.'T') .or. wavelength_set) call unit_lims
+      return ; end subroutine initialiserebin
+
+      subroutine rebinallocate
+      implicit none
+      integer ierr
       if( allocated(ascan) ) deallocate(ascan) ! can reset
       allocate(ascan(nchannel*2,npts),stat=ierr)
       if(ierr.ne.0)stop 'Memory allocation error'
@@ -1208,7 +1239,8 @@ stepsize and allocate an array to hold the data.
       ascan=0.0d0   ! Clear any junk  
 !      call cpu_time(time2)
 !      write(*,*)'Time taken to zero array =',time2-time1,'/s'
-      return ; end subroutine initialiserebin                                @}
+      return ; end subroutine rebinallocate      
+      @}
 
 The commented out lines are used to find out if the program is thrashing 
 the hard disk. If the time taken to zero the array is more than a small
@@ -1335,6 +1367,8 @@ a set of counts and a monitor column.
         if(logexdet(i).eq.2)then
           if(led(i,tthl,tthh))cycle  ! Is this an excluded region for this channel
         endif
+        tthl = convert_unit_function( tthl )
+        tthh = convert_unit_function( tthh )
         call bin(tthl,tthh,cts(i),2*i-1)
         call bin(tthl,tthh,ctsmon,2*i)
         sumtotal(i)=sumtotal(i)+cts(i)
@@ -1393,6 +1427,13 @@ used elsewhere.
       real(kind=8) :: minrenormsig=5.0
       character(len=90) :: wincnt
       logical :: winlog=.false. 
+      logical :: wavelength_set = .false.
+      real(kind=8) :: wavelength=0.0d0
+      ! T = Two theta
+      ! Q = 4 * pi * sin( two_theta * pi / 360.0 ) / wavelength
+      ! R = [q squared] = Q * Q
+      character(len=1) :: units = 'T'
+      real(kind=8) :: four_pi, pi_over_360
       contains
 @<ibin@>
 @<tthhb@>
@@ -1404,9 +1445,144 @@ used elsewhere.
 @<processline@>
 @<led@>
 @<window@>
+@<convert_unit_function@>
+
       end module rebin                                                       @}
 
+Now we need some information from the user on the command line. Namely,
+the unit to use (two theta remains as a default) and the wavelength as 
+an option
+
+@d unitsoptions
+@{
+! These will end up in the useroptions module
+!        case('wvl')  call setwavelength(string)
+!
+      subroutine setwavelength(s)
+      use rebin
+      character(len=*), intent(in) :: s
+      if(s(1:5).eq.'wvln=')read(s(6:len_trim(s)),*,err=1)wavelength
+      wavelength_set = .true.
+      write(*,*)'Using wavelength of ',wavelength
+      return
+1     write(*,*)'Error reading wavelength',s
+      stop
+      end subroutine setwavelength
+!
+!        case('uni')  call setunits(string)
+      subroutine setunits(s)
+      use rebin
+      character(len=*), intent(in) :: s
+!                      12345678
+      if( s(1:8) .eq. 'units=Q2' ) then
+          units = 'R'
+          write(*,*)'Binning into Q^2 = 16.pi^2.sin^2(theta)/wavelength^2'
+          return
+      endif
+!                      1234567
+      if( s(1:7) .eq. 'units=Q' ) then
+          units = 'Q'
+          write(*,*)'Binning into Q = 4.pi.sin(theta)/wavelength'
+          return
+      endif
+      end subroutine setunits
+@}
+
+
+
 This module now contains everything we will need for rebinning our data.
+
+\subsection{Converting to another unit }
+
+March 2009, some people want to bin into constant steps in Q, 
+
+ \[ Q = \frac{4\pi \sin{\theta}{\lambda} } \]
+
+We get the wavelength, $\lambda$ either from the command line,
+or from the header of the scans Q(4) fortran or Q[3] in C. 
+
+For completeness we'll do Q squared at the same time. Might be interesting
+for plotting data on a log scale (thermal factors go as q squared).
+
+D-spacing offers
+an exciting possibility for dividing by zero, so it is skipped for now.
+
+@d convert_unit_function
+@{
+      real(kind=8) function convert_unit_function( x )
+      real(kind=8), intent(in) :: x
+      real(kind=8) :: qt
+      select case((units))
+        case('T') ! Two theta, do nothing
+           convert_unit_function = x
+           return
+        case('Q') ! Q - constants from initialise_rebin
+           convert_unit_function = four_pi*sin(x*pi_over_360)/wavelength
+           return
+        case('R') ! Q^2 
+           qt = four_pi * sin( x * pi_over_360 )/wavelength
+! use a signed quantity
+!        write(*,*)qt,qt*qt,SIGN( qt * qt , qt ),x
+           convert_unit_function = sign( qt * qt , qt )
+           return
+        case default
+           convert_unit_function = x
+           return
+      end select
+      return
+      end function convert_unit_function
+!
+!
+! To be called once per scan - picks up wavelength from command line
+      subroutine convert_unit_setupQ( Q )
+! from rebin module :::: logical :: wavelength_set = .false.
+      real(kind=8), dimension(60), intent(in) :: Q
+      if ( (units .eq. 'T') .or. wavelength_set) then
+         return
+      endif 
+      if( Q(4) .gt. 1.0E-15 ) then
+          wavelength = Q(4)
+! Assume always the same for all scans:
+          write(*,*)
+          write(*,*)'Got wavelength',wavelength,'from spec file Q[3]'
+          wavelength_set = .true.
+      endif
+! Check for errors
+! let them have Angstroms as meters (1e-11) 
+      if ((wavelength .lt. 1.0E-15) .and. (units .ne. 'T') ) then
+        write(*,*)'Your wavelength is a bit small ',wavelength 
+        write(*,*)'Giving up, try putting wvln=1.234 on command line'
+        stop
+      endif
+!      write(*,*)'calling setupQ from convert_unit_setupQ'
+      call unit_lims()
+      return
+      end subroutine convert_unit_setupQ
+
+      subroutine unit_lims()
+      real(kind=8) :: stmp
+! apply the limits according to if the user changed them
+      tthlow = convert_unit_function( user_tthlow )
+      tthhigh = convert_unit_function( user_tthhigh )
+! set the step size to be right at 30 degrees twotheta
+      step = convert_unit_function( 30.0d0+user_step ) 
+      step = step - convert_unit_function( 30.0d0 )
+! round it to be some printable represention 
+      write(*,*)
+! round to something nicely printable
+      if(units.ne.'T')then
+        stmp = int(log10(step)-2.0d0)*1.0d0 
+        stmp = exp( log(10.0d0) * stmp )
+        step = int(step/stmp)*stmp
+      endif
+!      write(*,*)'from',tthlow,'to',tthhigh,'step',step
+      call checkrebinpars
+      call rebinallocate
+      return
+      end subroutine unit_lims
+
+@}
+
 
 \subsection{Test programs}
 
@@ -1624,6 +1800,9 @@ the other types of scan with these methods would be a bit silly.
       allocate(a(ncolumns))
       allocate(chantot(ncolumns))
       chantot=0.0d0 ; igoodpoints=0 ; ibadpoints=0; a=0.0d0
+! Set up any unit conversions which are requested
+!   Send the current Q line from the specfile module to the rebin module
+      call convert_unit_setupQ( Q )
 ! Skip the first line of data
       call getdata(a,ncolumns)
       tth1=a(itth)
@@ -3394,7 +3573,11 @@ FIXME - range of scan to dump.
       use rebin
       use summation
       integer(kind=4) :: i, ilow, ihigh, n
-      call filext('.xye',n) ! epfs never refer to a scan, always a sum
+      character(len=4) :: extn
+      if(units .eq. 'T') extn = '.xye'
+      if(units .eq. 'Q') extn = '.qye'
+      if(units .eq. 'R') extn = '.qsq'
+      call filext(extn,n) ! epfs never refer to a scan, always a sum
       open(unit=ioutunit,status='UNKNOWN',file=outfile)
       ilow=getfirstpoint(hist,2,npts,2)
       ihigh=getlastpoint(hist,2,npts,2)
@@ -3626,7 +3809,8 @@ command line is supposed to be getting standardised in the next few years.
       endif
       if(iarg.ge.2)then
         call getarg(2,string)   ! get the stepsize
-        read(string,*,err=10,end=10)step 
+        read(string,*,err=10,end=10)step
+        user_step = step
       endif
       if(iarg.ge.3)then      
         call getarg(3,string)   ! get the first scan to bin
@@ -3666,6 +3850,8 @@ Currently we have ed and es to specify excluded detectors and scans.
       if(string(1:1).ne.' ') then
        select case (string(1:3))
         case('mon') ; call setmonitorcol(string)
+        case('wvl') ; call setwavelength(string)
+        case('uni') ; call setunits(string)
         case('ed=') ; call exdet(string)
         case('es=') ; call exscan(string)
         case('is=') ; call incscan(string)
@@ -3830,11 +4016,13 @@ file before doing any binning, so it is down to the user.
       use rebin
       character(len=*),intent(in) :: s
       if(s(1:7).eq.'lowtth=')read(s(8:len_trim(s)),*)tthlow
+      user_tthlow = tthlow
       return ; end subroutine lowtth
       subroutine hightth(s)
       use rebin
       character(len=*),intent(in) :: s
       if(s(1:8).eq.'hightth=')read(s(9:len_trim(s)),*)tthhigh
+      user_tthhigh = tthhigh
       return; end subroutine hightth                                       @}
 
 For the diagnostic plots, outliers are placed at $6\sigma$ by default. If
@@ -3862,6 +4050,7 @@ might be required with a reduced angular range.
       use rebin
       character(len=*),intent(in):: s
       if(s(1:5).eq.'step=')read(s(6:len_trim(s)),*)aminstep
+      user_step = aminstep
       return; end subroutine minstepset                                    @}
 
 For deciding whether or not a particular $2\theta$ value has been observed
@@ -4224,7 +4413,8 @@ of the other modules should depend on the useroptions stuff).
 @<bcmset@>
 @<snblset@>
 @<setmonitorcol@>
-      end module useroptions                                            @}
+@<unitsoptions@>
+end module useroptions                                            @}
       
 The \var{isc} variable holds a number which tells us which scale factor to
 apply to any data which is written out. Binit style programs will want 1 or
@@ -4248,7 +4438,7 @@ a specific message for each program.
 ! Writes a helpful message to stdout
       character(len=80)::name      
       call getarg(0,name)
-      write(*,'(a)')name(1:len_trim(name))//' version 26-11-2007'
+      write(*,'(a)')name(1:len_trim(name))//' version March 2009'
       write(*,*)
       write(*,1000)name(1:len_trim(name))
                                                                         @}
@@ -4334,6 +4524,9 @@ with everything else wrapped up inside previously defined code.
      &/'   step=x.xxxx to force a stepsize (if very small)'             &
      &/'   wd=xx to set a limit for outliers on diagnostic file',       &
      & ', diag.mtv'                                                     &
+     &/'   wvln=xx.xx to set the wavelength used for unit conversion',  &
+     &/'   units=Q bins into Q = 4*pi*sin(theta)/wavelength',           &
+     &/'   units=Q2 bins into Q^2 = 16*pi^2*sin^2(theta)/wavelength^2', &
      &/'   alp=xx for esd=sqrt(cts+alp), default is 0.5'                &
      &/'   mm=xx sets the minimum monitor counts threshold (default=5)' &
      &/'   mr=xx for minimum counts needed in all channels to use '     &
@@ -4436,6 +4629,9 @@ resets the summing arrays to zero between scans.
      &/'   lowtth=xx.xx to set min two theta to use (default=-30.0)'    &
      &/'   hightth=xx.xx to set max two theta to use (default=160.0)'   &
      &/'   step=x.xxxx to force a stepsize (if very small)'             &
+     &/'   wvln=xx.xx to set the wavelength used for unit conversion',  &
+     &/'   units=Q bins into Q = 4*pi*sin(theta)/wavelength',           &
+     &/'   units=Q2 bins into Q^2 = 16*pi^2*sin^2(theta)/wavelength^2', &
      &/'   alp=xx for esd=sqrt(cts+alp), default is 0.5'                &
      &/'   zap=xx for esd level in filtering operation                ' &
      &/'   superzap=xx for zinger elimination, 0.0 < xx < 1.0         ' &
@@ -5404,6 +5600,18 @@ df %OPTS% /exe:id31sum.exe     id31sum.f90
 df %OPTS% /exe:id31sumall.exe  id31sumall.f90
 df %OPTS% /exe:id31offsets.exe id31offsets.f90      
 df %OPTS% /exe:sifit.exe       sifit.f90        @}
+
+@o dos95check.bat
+@{echo off
+nuweb binit.w
+echo id31sum
+g95 id31sum.f90 -o test/id31sum.exe 
+echo id31offsets
+g95 id31offsets.f90 -o test/id31offsets.exe 
+echo id31sumall
+g95 id31sumall.f90 -o test/id31sumall.exe 
+rem df %OPTS% /exe:sifit.exe       sifit.f90        @}
+
 
 The unix equivalent of for building the programs is as follows. 
 (-en means enforce standard -m0 means all warnings and comments, 
