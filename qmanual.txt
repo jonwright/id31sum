@@ -1,0 +1,36 @@
+Hi Andy,
+
+At last - a test version of binning into Q-space is ready. Extra command line possibilities are:
+
+ units=Q        
+  ... converts to Q=4*pi*sin(theta)/wavelength
+      output filename extension is .qye for id31sum
+      output filename extensions are .inq where .inp for id31sumall
+
+ units=Q2       
+  ... converts to signed Q*Q
+      B-factor is linear in this versus log intensity
+      output filename extension is .q2
+      output filename extensions are .inq2 where .inp for id31sumall
+
+ wvln=0.4124
+  ... sets the wavelength in case it is not found in the specfile
+
+Your temp.res file needs to fix any zero shifts.
+
+The programs look for "#Q" in the header expecting Q["3"] to be set as the wavelength in the spec session. Maybe Alejandro can help - I tried to follow what is described at:
+   http://www.certif.com/spec_manual/fourc_4_9.html
+
+Only id31sumall and id31sum should be affected. They will attempt to convert the stepsize, hightth and lowtth to the right output unit for you. The step size in Q is based on rounding what you'd get at 30 degrees in twotheta. Excluded regions should remain in two theta units. I have put executables in coral:~/wright/bin and also on diffract31:~/bin. In case of problems the last versions you had should be saved in a tar file in diffract31's bin directory. 
+
+It should be relatively easy to add any other functions of two theta now that these ones are in place. Source is at:
+
+http://fable.svn.sourceforge.net/viewvc/fable/id31sum/trunk/binit.w?view=log
+
+Seems straightfoward to compile for windows too if someone needs it. Let me know if I missed a factor of pi somewhere or if there are some other, more interesting units to supply. Interesting, but so far unjustifiable, would be regular steps in:
+  log(Q*Q + c)
+... where c is a small constant to avoid taking log(0). D-spacings behave badly near zero in twotheta and looked to be messy.
+
+Enjoy, and let me know if there seem to be any problems. 
+
+Jon
