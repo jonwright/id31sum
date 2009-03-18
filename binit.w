@@ -362,7 +362,7 @@ a definitive list.
 \item scan ended by control-c ? Did I imagine this ?
 \end{itemize}
 
-For the rest of #Q see: http://www.certif.com/spec\_manual/fourc\_4\_9.html
+For the rest of \#Q see: http://www.certif.com/spec\_manual/fourc\_4\_9.html
 
 The \code{readheader} routine interprets these lines. 
 
@@ -1365,7 +1365,8 @@ a set of counts and a monitor column.
         tthl = tth1 - offset(i)
         tthh = tth2 - offset(i)
         if(logexdet(i).eq.2)then
-          if(led(i,tthl,tthh))cycle  ! Is this an excluded region for this channel
+! Is this an excluded region for this channel
+          if(led(i,tthl,tthh))cycle  
         endif
         tthl = convert_unit_function( tthl )
         tthh = convert_unit_function( tthh )
@@ -1445,7 +1446,7 @@ used elsewhere.
 @<processline@>
 @<led@>
 @<window@>
-@<convert_unit_function@>
+@<convertunitfunction@>
 
       end module rebin                                                       @}
 
@@ -1496,7 +1497,7 @@ This module now contains everything we will need for rebinning our data.
 
 March 2009, some people want to bin into constant steps in Q, 
 
- \[ Q = \frac{4\pi \sin{\theta}{\lambda} } \]
+ \[ Q = \frac{4\pi \sin{\theta} }{\lambda}  \]
 
 We get the wavelength, $\lambda$ either from the command line,
 or from the header of the scans Q(4) fortran or Q[3] in C. 
@@ -1507,7 +1508,7 @@ for plotting data on a log scale (thermal factors go as q squared).
 D-spacing offers
 an exciting possibility for dividing by zero, so it is skipped for now.
 
-@d convert_unit_function
+@d convertunitfunction
 @{
       real(kind=8) function convert_unit_function( x )
       real(kind=8), intent(in) :: x
