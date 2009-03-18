@@ -1486,6 +1486,10 @@ an option
           write(*,*)'Binning into Q = 4.pi.sin(theta)/wavelength'
           return
       endif
+
+      write(*,*)'Did not understand your option',s
+      write(*,*)'Use nothing for twotheta, units=Q or units=Q2'
+      stop 
       end subroutine setunits
 @}
 
@@ -3197,6 +3201,10 @@ appreciate these points).
       real(kind=8), dimension(2,5) :: vals 
       real(kind=8) :: top ! for scaling to format
       character(len=10) :: str
+      if(units.ne.'T')then
+        write(*,*)'Can only write GSAS format for two theta data'
+        stop
+      endif
       call filext('.gsa',is)
       open(file=outfile,unit=ioutunit,status='UNKNOWN')
       write(title,1002)       specsfilename(1:len_trim(specsfilename)), &
@@ -3277,6 +3285,10 @@ Now for something with the extension spf.
       character(len=3) :: months(12)
       data months /'JAN','FEB','MAR','APR','MAY','JUN',                 &
      &             'JUL','AUG','SEP','OCT','NOV','DEC'/
+      if(units.ne.'T')then
+        write(*,*)'Can only write SPF format for two theta data'
+        stop
+      endif
       call filext('.spf',is)
       open(file=outfile,unit=ioutunit,status='UNKNOWN')
       ilow=getfirstpoint(hist,2,npts,2)
@@ -3335,6 +3347,10 @@ Here's something to produce that format.
       integer(kind=4),intent(in)::is
       integer (kind=4) :: low, ipts, i, k, n
       character(len=10):: str
+      if(units.ne.'T')then
+        write(*,*)'Can only write PDS format for two theta data'
+        stop
+      endif
       call filext('.pds',is)
       open(file=outfile,unit=ioutunit,status='UNKNOWN')    
       write(title,1002)specsdate(1:len_trim(specsdate)),                &
@@ -3577,7 +3593,7 @@ FIXME - range of scan to dump.
       character(len=4) :: extn
       if(units .eq. 'T') extn = '.xye'
       if(units .eq. 'Q') extn = '.qye'
-      if(units .eq. 'R') extn = '.qsq'
+      if(units .eq. 'R') extn = '.q2'
       call filext(extn,n) ! epfs never refer to a scan, always a sum
       open(unit=ioutunit,status='UNKNOWN',file=outfile)
       ilow=getfirstpoint(hist,2,npts,2)
@@ -3604,7 +3620,9 @@ FIXME - range of scan to dump.
       character(len=15):: string
       write(string,'(i10)')n
       string=adjustl(string)
-      string=string(1:len_trim(string))//'.inp'
+      if(units.eq.'T') string=string(1:len_trim(string))//'.inp'
+      if(units.eq.'Q') string=string(1:len_trim(string))//'.inq'
+      if(units.eq.'R') string=string(1:len_trim(string))//'.inq2'
 !      write(*,*)'String was ',string
       open(unit=ioutunit,status='UNKNOWN',file=string)
       ilow=getfirstpoint(hist,2,npts,2)
@@ -4439,7 +4457,7 @@ a specific message for each program.
 ! Writes a helpful message to stdout
       character(len=80)::name      
       call getarg(0,name)
-      write(*,'(a)')name(1:len_trim(name))//' version March 2009'
+      write(*,'(a)')name(1:len_trim(name))//' version 18 March 2009'
       write(*,*)
       write(*,1000)name(1:len_trim(name))
                                                                         @}
