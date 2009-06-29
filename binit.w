@@ -3957,7 +3957,17 @@ to deal with that will be needed.
      &'Reading exclusion file, lines must have channel lowtth hightth scan'
       write(*,'(a)')'Make scan number less than zero for all'
 1     read(29,*,end=2,err=2)i,xl,xh,ns
-      logexdet(i+1)=2 ! set that this has excluded regions
+      if((i.ge.0).and.(i.le.NCHAN)) then
+         if(logexdet(i+1).eq.0) then
+            logexdet(i+1)=2 ! set that this has excluded regions
+         else
+            write(*,'(a,i3,a)')'Channel',i,' already excluded'
+         endif
+      else
+         write(*,'(a,i3,a)')'Error in your exfile, channel',i,          &
+     &      'not allowed'  
+         stop ! Operator error - give up
+      endif
       iexrc=iexrc+1 ! increment number of excluded regions
       goto 1
 2     allocate(exarray(iexrc,3)) ! holds low tth, high tth pairs
@@ -4457,7 +4467,7 @@ a specific message for each program.
 ! Writes a helpful message to stdout
       character(len=80)::name      
       call getarg(0,name)
-      write(*,'(a)')name(1:len_trim(name))//' version 18 March 2009'
+      write(*,'(a)')name(1:len_trim(name))//' version 29 June 2009'
       write(*,*)
       write(*,1000)name(1:len_trim(name))
                                                                         @}
