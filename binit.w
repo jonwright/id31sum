@@ -371,6 +371,7 @@ The \code{readheader} routine interprets these lines.
       character(len=1) :: letter
       integer(kind=4) :: i,j
       real(kind=8) :: a
+      integer(kind=4),parameter :: four=4
       if(line(1:1).eq.'#') goto 2 ! if already on header, don't skip
 1     read(iunit,lnfmt,end=100)line
 2     if(line(1:1).eq.'#') then; letter=line(2:2); topofscan=.true.
@@ -381,7 +382,7 @@ The \code{readheader} routine interprets these lines.
          headerwords(i+1)=j
         case('P')
          read(line(3:3),'(i1)')i
-         call rdnums(4,NWORDS,wordvalues(:,i+1))
+         call rdnums(four,NWORDS,wordvalues(:,i+1))
         case('Q')
 ! Copy the Q from the header into our specfile module
          read(line(3:LINELENGTH),*,end=1, err=1) Q
@@ -615,11 +616,12 @@ we try for an online binning program.
 ! A is an array, dimensioned by the number of data items to be expected
       integer(kind=4),intent(in) :: n
       real(kind=8),dimension(n),intent(out) :: a
+      integer(kind=4), parameter :: one = 1
       if(topofscan)then; topofscan=.false. ; else
         read(iunit,lnfmt,err=10,end=10)line                  ! goes via line
         topofscan=.false.
       endif
-      call rdnums(1,n,a)                                   ! reads from line
+      call rdnums(one,n,a)                                   ! reads from line
       if(line(1:1).eq.'#')then; ispecerr=-1 ;goto 100 ; endif
       go to 100    
 10    ispecerr=-1 ! End of file
@@ -1134,7 +1136,9 @@ The upper 2$\theta$ limit for a bin is to be given by a function tthhb:
 @d tthhb
 @{      real(kind=8) function tthhb(n)
       integer(kind=4), intent(in) :: n
-      tthhb=tthlb(n+1)
+      integer(kind=4)nplusone
+      nplusone=n+1
+      tthhb=tthlb(nplusone)
       return; end function tthhb                                             @}
 
 The lower 2$\theta$ limit for a bin is to be given by a function tthlb:
@@ -1358,7 +1362,7 @@ a set of counts and a monitor column.
       real(kind=8), intent(in) :: tth1, tth2, ctsmon
       integer(kind=4), intent(in) :: n
       real(kind=8), intent(in), dimension(n) :: cts
-      integer(kind=4) :: i
+      integer(kind=4) :: i, ich
       real(kind=8) :: tthh, tthl
       do i = 1,n
         if(logexdet(i).eq.1)cycle ! skip if excluded completely
@@ -1370,8 +1374,10 @@ a set of counts and a monitor column.
         endif
         tthl = convert_unit_function( tthl )
         tthh = convert_unit_function( tthh )
-        call bin(tthl,tthh,cts(i),2*i-1)
-        call bin(tthl,tthh,ctsmon,2*i)
+	ich = 2*i-1
+        call bin(tthl,tthh,cts(i),ich)
+	ich = 2*i
+        call bin(tthl,tthh,ctsmon,ich)
         sumtotal(i)=sumtotal(i)+cts(i)
       enddo
       sumtotalmon=sumtotalmon+ctsmon
@@ -1426,8 +1432,10 @@ used elsewhere.
       real(kind=8) :: sumtotal(nchan), sumtotalmon, minmon=1.0d0
       real(kind=8) :: winhigh,winlow
       real(kind=8) :: minrenormsig=5.0
+      real(kind=8) :: randomstart = 0, randomval=0
       character(len=90) :: wincnt
       logical :: winlog=.false. 
+      logical :: userandomstart = .false.
       logical :: wavelength_set = .false.
       real(kind=8) :: wavelength=0.0d0
       ! T = Two theta
@@ -1767,6 +1775,7 @@ the other types of scan with these methods would be a bit silly.
 @{@<mma@>
 @<logmotors@>
 @<pointfilter@>
+@<random@>
       subroutine processscan(n)
       use specfiles     
       use rebin
@@ -1820,6 +1829,11 @@ the other types of scan with these methods would be a bit silly.
           tth1=a(itth)
         enddo
       endif
+      if( userandomstart ) then
+        randomval = randomstart * rlcg() + tth1
+	write(*,*)
+	write(*,*)'rst using',randomval,'from',tth1
+      endif
 ! Main loop
 1     call getdata(a,ncolumns)
       if(filterlogical) call pf(a,itth,ma0,ma8,mon)
@@ -1833,7 +1847,9 @@ the other types of scan with these methods would be a bit silly.
       enddo
       if(ispecerr.eq.0)then
         tth2=a(itth)  
-        if(a(mon).gt.minmon .and. window(a,ncolumns)) then
+        if(a(mon).gt.minmon .and. window(a,ncolumns) .and.   &
+!23456
+     &    .not.(userandomstart .and. (tth2.lt.randomval))) then
          igoodpoints=igoodpoints+1
          chantot=chantot+a ! sum on totals
          call processline(tth1,tth2,a(ma0:ma8),nchannel,a(mon))
@@ -3780,6 +3796,7 @@ A module collecting together all the various output subroutines.
 @<openlogfile@>
 @<wlogfile@>
 @<bcmfile@>
+@<rstset@>
       end module outputfiles                                                 @}
 
 \section{Driver programs}
@@ -3891,6 +3908,7 @@ Currently we have ed and es to specify excluded detectors and scans.
         case('3pf') ; call filterset(string) 
         case('bcm') ; call bcmset(string)
         case('snb') ; call snblset(string)	
+	case('rst') ; call rstset(string)
         case('nod') ; if(string(1:6).eq.'nodiag')then 
           diag=.false. ; else ;
           write(*,*)'Sorry, I did not understand the command line'
@@ -3929,6 +3947,23 @@ array provided by this module.
       goto 100
 10    STOP 'Could not understand your list of excluded detectors'
 100   return; end subroutine exdet                                        @}
+
+Add a jitter offset at the start of each scan to hide steps in the background
+when different channels have differing background. Philosophically this is
+not a good solution. Should actually measure the background for each channel
+independently and use that...
+
+@d rstset
+@{      subroutine rstset(string)
+      use rebin
+      character(len=*), intent(in) :: string
+!      write(*,*)string, string(4:len(string))
+      read(string(5:len(string)),*,err=10) randomstart
+      userandomstart = .true.
+      write(*,'(a,f)')'Using randomised start offset of rnd*',randomstart
+      goto 100
+10    STOP 'Could not understand your rst=x.xxx request'
+100   return; end subroutine rstset                                       @}
 
 Unfortunately the instrument occasionally gives spurious bits of background 
 only in some channels for small twotheta ranges. Since these have not yet been
@@ -4467,7 +4502,7 @@ a specific message for each program.
 ! Writes a helpful message to stdout
       character(len=80)::name      
       call getarg(0,name)
-      write(*,'(a)')name(1:len_trim(name))//' version 29 June 2009'
+      write(*,'(a)')name(1:len_trim(name))//' version 14-05-2010'
       write(*,*)
       write(*,1000)name(1:len_trim(name))
                                                                         @}
@@ -4566,6 +4601,7 @@ with everything else wrapped up inside previously defined code.
      &/'          removing the highest point'                           &
      &/'   medianofchannels to get median_channel*n_active_channels   ' &
      &/'   3pf for a 3 point median filter (you need to be desparate) ' &
+     &/'   rst=x.xx to randomly offset scan start points by rnd*x.xx  ' &
      &/'   renorm to use current effics instead of values from temp.res'&
      &/'   nodiag to prevent creation of diagnostic file, diag.mtv'     &
      &/'   gsas to output a .gsa file for gsas'                         &
@@ -4668,6 +4704,7 @@ resets the summing arrays to zero between scans.
      &/'          removing the highest point'                           &
      &/'   medianofchannels to get median_channel*n_active_channels   ' &
      &/'   3pf for a 3 point median filter (you need to be desparate) ' &
+     &/'   rst=x.xx to randomly offset scan start points by rnd*x.xx  ' &
      &/'   window=counter,low,high to reject bad points'                &
      &/'       eg: window=lake,4,6 for temperatures between 4 and 6 K'  &
      &/'   mm=xx for to set minimum monitor counts threshold',          &
@@ -6975,6 +7012,25 @@ an email to wright@@esrf.fr
 
 \end{verbatim}
 
+\section{Pseudo-Random number generator}
+
+Get a re-producible stream of random numbers for doing randomised
+off-setting of scan start positions. 
+
+@d random
+@{
+      real(kind=4) function rlcg( )
+! This returns a float in the range 0 to 1 which is a 
+! deterministic sequence. Will be the same over many runs.
+      integer(kind=4) :: a = 69069, c = 1327217885 
+      integer(kind=4), save :: x = 1
+      real(kind=4), save :: m = 2147483647
+      x = x*a + c
+      rlcg = (real(x)/m+1.0)/2.0
+!       write(*,'(I12,1X,F12.10)')x, rlcg
+      end function rlcg
+@}
+
 
 \section{Sorting algorithm from netlib for medians}
 
@@ -7032,10 +7088,11 @@ an email to wright@@esrf.fr
 !C           IF-THEN-ELSE-ENDIF.  (RWC, WRB)
 !C***END PROLOGUE  DSORT
 !C     .. Scalar Arguments ..
-      INTEGER KFLAG, N
+      INTEGER(kind=8) KFLAG
+      INTEGER(kind=4) N
 !C     .. Array Arguments ..
       DOUBLE PRECISION DX(*)
-      INTEGER DY(*)
+      INTEGER(kind=4) DY(*)
 !C     .. Local Scalars ..
       DOUBLE PRECISION R, T, TT, TTY, TY
       INTEGER I, IJ, J, K, KK, L, M, NN
