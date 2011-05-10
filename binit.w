@@ -188,6 +188,7 @@ routines is needed, so we'll make a list of what we want here.
       integer(kind=4),parameter :: LINELENGTH=512, WORDLENGTH=100
       integer(kind=4),parameter :: NWORDS=60, NLINES=50
       integer(kind=4),dimension(NLINES) :: headerwords
+      real(kind=8) :: scanstart, scanend
       real(kind=8),dimension(NWORDS,NLINES) :: wordvalues
       real(kind=8),dimension(NWORDS) :: Q
       character(len=6) :: lnfmt
@@ -369,6 +370,7 @@ The \code{readheader} routine interprets these lines.
 @d readheader 
 @{      subroutine readheader
       character(len=1) :: letter
+      character(len=128) :: motor
       integer(kind=4) :: i,j
       real(kind=8) :: a
       integer(kind=4),parameter :: four=4
@@ -393,7 +395,8 @@ The \code{readheader} routine interprets these lines.
          if(ncolumns.ne.i)                                              &
      &   write(*,'(a,i5)')'error reading header for scan',iscan 
         case('S')
-         read(line(3:len_trim(line)),*,end=1)iscan,scantype
+         read(line(3:len_trim(line)),*,end=1)iscan,scantype,motor,      &
+     &                 scanstart, scanend
         case('F')
          specsfilename=line(3:len_trim(line)) ! get original filename
         case('D')
@@ -1366,6 +1369,8 @@ a set of counts and a monitor column.
       real(kind=8) :: tthh, tthl
       do i = 1,n
         if(logexdet(i).eq.1)cycle ! skip if excluded completely
+	if(userandomstart.and.rstchan(i).and.(tth2.lt.randomval))cycle
+	if(userandomend.and.renchan(i).and.(tth2.gt.randomvalend))cycle
         tthl = tth1 - offset(i)
         tthh = tth2 - offset(i)
         if(logexdet(i).eq.2)then
@@ -1433,9 +1438,13 @@ used elsewhere.
       real(kind=8) :: winhigh,winlow
       real(kind=8) :: minrenormsig=5.0
       real(kind=8) :: randomstart = 0, randomval=0
+      real(kind=8) :: randomend = 0, randomvalend=0
       character(len=90) :: wincnt
       logical :: winlog=.false. 
       logical :: userandomstart = .false.
+      logical :: rstchan( nchan ) = .false.
+      logical :: userandomend = .false.
+      logical :: renchan( nchan ) = .false.
       logical :: wavelength_set = .false.
       real(kind=8) :: wavelength=0.0d0
       ! T = Two theta
@@ -1455,7 +1464,7 @@ used elsewhere.
 @<led@>
 @<window@>
 @<convertunitfunction@>
-
+@<random@>
       end module rebin                                                       @}
 
 Now we need some information from the user on the command line. Namely,
@@ -1775,7 +1784,6 @@ the other types of scan with these methods would be a bit silly.
 @{@<mma@>
 @<logmotors@>
 @<pointfilter@>
-@<random@>
       subroutine processscan(n)
       use specfiles     
       use rebin
@@ -1831,8 +1839,11 @@ the other types of scan with these methods would be a bit silly.
       endif
       if( userandomstart ) then
         randomval = randomstart * rlcg() + tth1
-	write(*,*)
 	write(*,*)'rst using',randomval,'from',tth1
+      endif
+      if( userandomend ) then
+        randomvalend = scanend - randomend * rlcg() 
+	write(*,*)'ren using',randomvalend,'from',scanend
       endif
 ! Main loop
 1     call getdata(a,ncolumns)
@@ -1847,9 +1858,7 @@ the other types of scan with these methods would be a bit silly.
       enddo
       if(ispecerr.eq.0)then
         tth2=a(itth)  
-        if(a(mon).gt.minmon .and. window(a,ncolumns) .and.   &
-!23456
-     &    .not.(userandomstart .and. (tth2.lt.randomval))) then
+        if(a(mon).gt.minmon .and. window(a,ncolumns)) then
          igoodpoints=igoodpoints+1
          chantot=chantot+a ! sum on totals
          call processline(tth1,tth2,a(ma0:ma8),nchannel,a(mon))
@@ -3797,6 +3806,7 @@ A module collecting together all the various output subroutines.
 @<wlogfile@>
 @<bcmfile@>
 @<rstset@>
+@<renset@>
       end module outputfiles                                                 @}
 
 \section{Driver programs}
@@ -3909,6 +3919,7 @@ Currently we have ed and es to specify excluded detectors and scans.
         case('bcm') ; call bcmset(string)
         case('snb') ; call snblset(string)	
 	case('rst') ; call rstset(string)
+	case('rnd') ; call renset(string)
         case('nod') ; if(string(1:6).eq.'nodiag')then 
           diag=.false. ; else ;
           write(*,*)'Sorry, I did not understand the command line'
@@ -3957,13 +3968,120 @@ independently and use that...
 @{      subroutine rstset(string)
       use rebin
       character(len=*), intent(in) :: string
-!      write(*,*)string, string(4:len(string))
-      read(string(5:len(string)),*,err=10) randomstart
-      userandomstart = .true.
-      write(*,'(a,f)')'Using randomised start offset of rnd*',randomstart
+      integer itok, iprev, itot, ichan, i
+      itot = len_trim(string)
+      itok = index( string(5:itot), ",")
+      if (itok.eq.0) then
+         read(string(5:itot),*,err=10) randomstart
+         do i = 1, nchan
+           rstchan(i) = .true.
+         enddo
+         goto 100
+      else
+         read(string(5:5+itok-2),*,err=10) randomstart
+         iprev = 5+itok
+         do
+            itok = index( string(iprev:itot), ",")
+            if (itok.eq.0) then
+               if(iprev.le.itot)then
+                  read( string(iprev:itot), *, err=10, end=10) ichan
+                  call rstadd(ichan)
+               endif
+               exit ! loop
+            endif
+            read( string(iprev:iprev+itok-1), *, err=10, end=10) ichan
+            call rstadd(ichan)         
+            iprev = iprev+itok
+         enddo
+      endif
+
       goto 100
-10    STOP 'Could not understand your rst=x.xxx request'
-100   return; end subroutine rstset                                       @}
+10    write(*,*)itok,iprev,itot,string
+      STOP 'Could not understand your rst=x.xxx request'
+100   userandomstart = .true.
+      write(*,'(A,1X,f7.5,1X,A,$)')'Applying random start of',randomstart, &
+     & 'to channels:'
+      do i = 1,nchan
+         if (rstchan(i)) write(*,'(1X,I2,$)') i-1
+      enddo
+      write(*,*)
+      return; end subroutine rstset                                       
+      
+      subroutine rstadd(ichan)
+      use rebin
+      integer ichan
+      if ((ichan .lt. 0).or. (ichan .ge. NCHAN)) then
+	write(*,*) 'rst channel out of range',ichan
+ 	stop
+      endif
+! the +1 makes it go from zero
+      rstchan(ichan+1) = .true.
+      return
+      end subroutine rstadd
+@}
+
+Here is the same code copied and pasted for a random ending point on a
+scan to complement the random starting point. 
+We will take the end point from the \#S declaration at the beginning 
+of the scan.
+
+@d renset
+@{      subroutine renset(string)
+      use rebin
+      character(len=*), intent(in) :: string
+      integer itok, iprev, itot, ichan, i
+      itot = len_trim(string)
+      itok = index( string(5:itot), ",")
+      if (itok.eq.0) then
+         read(string(5:itot),*,err=10) randomend
+         do i = 1, nchan
+           renchan(i) = .true.
+         enddo
+         goto 100
+      else
+         read(string(5:5+itok-2),*,err=10) randomend
+         iprev = 5+itok
+         do
+            itok = index( string(iprev:itot), ",")
+            if (itok.eq.0) then
+               if(iprev.le.itot)then
+                  read( string(iprev:itot), *, err=10, end=10) ichan
+                  call renadd(ichan)
+               endif
+               exit ! loop
+            endif
+            read( string(iprev:iprev+itok-1), *, err=10, end=10) ichan
+            call renadd(ichan)         
+            iprev = iprev+itok
+         enddo
+      endif
+
+      goto 100
+10    write(*,*)itok,iprev,itot,string
+      STOP 'Could not understand your ren=x.xxx request'
+100   userandomend = .true.
+      write(*,'(A,1X,f7.5,1X,A,$)')'Applying random end of',randomend, &
+     & 'to channels:'
+      do i = 1,nchan
+         if (renchan(i)) write(*,'(1X,I2,$)') i-1
+      enddo
+      write(*,*)
+      return; end subroutine renset                                       
+      
+      subroutine renadd(ichan)
+      use rebin
+      integer ichan
+      if ((ichan .lt. 0).or. (ichan .ge. NCHAN)) then
+	write(*,*) 'ren channel out of range',ichan
+ 	stop
+      endif
+! the +1 makes it go from zero
+      renchan(ichan+1) = .true.
+      return
+      end subroutine renadd
+@}
+
+
 
 Unfortunately the instrument occasionally gives spurious bits of background 
 only in some channels for small twotheta ranges. Since these have not yet been
@@ -4502,7 +4620,7 @@ a specific message for each program.
 ! Writes a helpful message to stdout
       character(len=80)::name      
       call getarg(0,name)
-      write(*,'(a)')name(1:len_trim(name))//' version 14-05-2010'
+      write(*,'(a)')name(1:len_trim(name))//' version 10-05-2011'
       write(*,*)
       write(*,1000)name(1:len_trim(name))
                                                                         @}
@@ -4602,6 +4720,9 @@ with everything else wrapped up inside previously defined code.
      &/'   medianofchannels to get median_channel*n_active_channels   ' &
      &/'   3pf for a 3 point median filter (you need to be desparate) ' &
      &/'   rst=x.xx to randomly offset scan start points by rnd*x.xx  ' &
+     &/'   rst=x.xx,1,2,3 to do that for channels 1,2,3 only          ' &
+     &/'   rnd=x.xx to randomly offset scan end points by rnd*x.xx    ' &
+     &/'   rnd=x.xx,1,2,3 to do that for channels 1,2,3 only          ' &
      &/'   renorm to use current effics instead of values from temp.res'&
      &/'   nodiag to prevent creation of diagnostic file, diag.mtv'     &
      &/'   gsas to output a .gsa file for gsas'                         &
@@ -5698,7 +5819,7 @@ The -M200 suppresses the \$ edit descriptor warning.
 @{# absoft f90 options were:
 OPTS="-en -m0 -M200 -lU77 -O2 -X -static"
 # ifort options are
-OPTS="-static -traceback"
+OPTS="-static -traceback -implicitnone"
 echo "Compiling " $1
 /opt/intel/fc/current/bin/ifort -o $1 $OPTS   $1.f90    
 strip $1                                                                     @}
