@@ -2792,7 +2792,7 @@ as many columns as are used and we should label them in a generic way.
        write(ioutunit,'(G14.8,2X,$)')bincen(i)
        do j=1,nchannel
         if(logexdet(j).eq.1)cycle ! skip if excluded completely         
-         write(ioutunit,'(2(G14.8,2X,$))')ascan(2*j-1,i),ascan(2*j,i)
+         write(ioutunit,'(2(G14.8,2X),$)')ascan(2*j-1,i),ascan(2*j,i)
        enddo
        write(ioutunit,*) ! end of line
       enddo
@@ -3843,7 +3843,7 @@ command line is supposed to be getting standardised in the next few years.
       use rebin
       use specfiles
       integer(kind=4) :: iarg, i
-      integer(kind=4),external :: iargc
+!      integer(kind=4),external :: iargc
       character(len=256) :: string ! massive string in case of silly user
       step=0.001d0; ifirstscan=0; ilastscan=0
       iarg=iargc()
@@ -7209,7 +7209,7 @@ off-setting of scan start positions.
 !C           IF-THEN-ELSE-ENDIF.  (RWC, WRB)
 !C***END PROLOGUE  DSORT
 !C     .. Scalar Arguments ..
-      INTEGER(kind=8) KFLAG
+      INTEGER KFLAG
       INTEGER(kind=4) N
 !C     .. Array Arguments ..
       DOUBLE PRECISION DX(*)
