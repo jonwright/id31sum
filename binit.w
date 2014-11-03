@@ -1435,7 +1435,8 @@ used elsewhere.
 @<OFFSET@>
 @<SCAN@>
       real(kind=8) :: sumtotal(nchan), sumtotalmon, minmon=1.0d0
-      real(kind=8) :: winhigh,winlow
+      real(kind=8) :: winhigh,winlow,winhighread,winlowread
+      integer(kind=4) :: wincol
       real(kind=8) :: minrenormsig=5.0
       real(kind=8) :: randomstart = 0, randomval=0
       real(kind=8) :: randomend = 0, randomvalend=0
@@ -1827,6 +1828,12 @@ the other types of scan with these methods would be a bit silly.
       call convert_unit_setupQ( Q )
 ! Skip the first line of data
       call getdata(a,ncolumns)
+      if(wincnt(1:6) .eq. 'Epoch') then
+         write(*,*)'Scan Epoch starts at',a(wincol)
+	 winlow = winlowread+a(wincol)
+	 winhigh = winhighread+a(wincol)
+         write(*,*)'Adjusting your Epoch window to',winlow,winhigh
+      endif
       tth1=a(itth)
       if(filterlogical)then  ! initialise
         call filterinit()
@@ -1953,7 +1960,6 @@ within an user defined window.
       use specfiles ! 
       integer(kind=4),intent(in) :: n
       real(kind=8),dimension(n),intent(in) :: ar
-      integer(kind=4) :: wincol
       if(winlog)then 
         wincol=whichcolumn(wincnt(1:len_trim(wincnt)))
         if(wincol.lt.0)then
@@ -3843,7 +3849,7 @@ command line is supposed to be getting standardised in the next few years.
       use rebin
       use specfiles
       integer(kind=4) :: iarg, i
-!      integer(kind=4),external :: iargc
+      integer(kind=4),external :: iargc
       character(len=256) :: string ! massive string in case of silly user
       step=0.001d0; ifirstscan=0; ilastscan=0
       iarg=iargc()
@@ -4277,6 +4283,8 @@ where \code{xx} is the threshold value.
       endif
       write(*,*)'windowing counter ',wincnt(1:len_trim(wincnt)),' from ', &
      & winlow, ' to ', winhigh
+      winhighread=winhigh
+      winlowread=winlow
       winlog=.true.
       return
       end subroutine windowset                                             @}
@@ -5816,12 +5824,14 @@ to work on all the amber linux machines.
 The -M200 suppresses the \$ edit descriptor warning.
 
 @o bld
-@{# absoft f90 options were:
+@{#more /opt/intel/README.esrf
+source /opt/intel/icsxe/2013.0.028/bin/ictvars.sh
+# absoft f90 options were:
 OPTS="-en -m0 -M200 -lU77 -O2 -X -static"
 # ifort options are
-OPTS="-static -traceback -implicitnone"
-echo "Compiling " $1
-/opt/intel/fc/current/bin/ifort -o $1 $OPTS   $1.f90    
+export OPTS="-static -traceback -implicitnone"
+echo "Compiling " $1 "with options" $OPTS
+ifort -o $1 $OPTS   $1.f90    
 strip $1                                                                     @}
 
 
@@ -7209,7 +7219,7 @@ off-setting of scan start positions.
 !C           IF-THEN-ELSE-ENDIF.  (RWC, WRB)
 !C***END PROLOGUE  DSORT
 !C     .. Scalar Arguments ..
-      INTEGER KFLAG
+      INTEGER(kind=4) KFLAG
       INTEGER(kind=4) N
 !C     .. Array Arguments ..
       DOUBLE PRECISION DX(*)
