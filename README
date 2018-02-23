@@ -1,0 +1,14 @@
+
+Source code for id31sum
+
+Processes powder diffraction data from a multianalyser instrument.
+
+All code is extracted from the file binit.w using the nuweb tool.
+
+ - Read at binit.pdf for more information
+ - Any modifications should be made to binit.w
+
+Fortran and latex sources and scripts are extracted in the git
+archive for convenience.
+
+Jon Wright 
