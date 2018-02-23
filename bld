@@ -1,0 +1,9 @@
+#more /opt/intel/README.esrf
+source /opt/intel/icsxe/2013.0.028/bin/ictvars.sh
+# absoft f90 options were:
+OPTS="-en -m0 -M200 -lU77 -O2 -X -static"
+# ifort options are
+export OPTS="-static -traceback -implicitnone"
+echo "Compiling " $1 "with options" $OPTS
+ifort -o $1 $OPTS   $1.f90    
+strip $1                                                                     

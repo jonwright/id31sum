@@ -1,0 +1,25 @@
+nuweb binit
+latex binit
+nuweb binit
+latex binit
+dvipdf binit
+dvips binit
+chmod a+x ./bld
+./bld plotit
+./bld columns
+./bld c2xye
+./bld plotmesh
+./bld testbins1
+./bld testbins2
+./bld bindump
+./bld testnextscan
+./bld id31sum
+./bld id31sumall
+./bld id31offsets
+./bld sifit
+./bld id31check
+chmod a+x id31sumcheck
+/opt/intel/fc/current/bin/ifort
+f90 -c profval.f -o profval.o -O2 
+f90 -o fitit fitit.f90  -en -m0 -lU77 -O2 -X -static profval.o -limsl 
+strip fitit                                                                  
